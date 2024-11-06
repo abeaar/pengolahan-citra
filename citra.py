@@ -1,9 +1,11 @@
-import streamlit as st
-from PIL import Image, ImageOps, ImageFilter
-import numpy as np
-from matplotlib import pyplot as plt
 import os
 from io import BytesIO
+
+import numpy as np
+import streamlit as st
+from matplotlib import pyplot as plt
+from PIL import Image, ImageEnhance, ImageFilter, ImageOps
+
 
 # Fungsi untuk menampilkan gambar dengan judul
 def tampilkan_judul(citra, judul):
@@ -15,13 +17,17 @@ def tampilkan_histogram(citra):
     if len(citra.shape) == 3:  # Histogram untuk gambar berwarna
         color = ('b', 'g', 'r')
         for i, col in enumerate(color):
-            hist = np.histogram(citra[:, :, i], bins=256, range=(0, 256))[0]
+            # Mengabaikan piksel hitam (nilai 0)
+            non_zero_pixels = citra[:, :, i][citra[:, :, i] > 0]
+            hist = np.histogram(non_zero_pixels, bins=256, range=(0, 256))[0]
             ax.bar(np.arange(256), hist, color=col, alpha=0.5, width=1.0)
-        ax.set_title('Histogram (RGB)')
+        ax.set_title('Histogram (RGB) - Tanpa Padding Hitam')
     else:  # Histogram untuk gambar grayscale
-        hist, _ = np.histogram(citra.flatten(), bins=256, range=(0, 256))
+        # Mengabaikan piksel hitam (nilai 0)
+        non_zero_pixels = citra.flatten()[citra.flatten() > 0]
+        hist, _ = np.histogram(non_zero_pixels, bins=256, range=(0, 256))
         ax.bar(np.arange(256), hist, color='black', alpha=0.7, width=1.0)
-        ax.set_title('Histogram (Grayscale)')
+        ax.set_title('Histogram (Grayscale) - Tanpa Padding Hitam')
     ax.set_xlim([0, 256])
     st.pyplot(fig)
 
@@ -55,7 +61,7 @@ if uploaded_file is not None:
     # Sidebar untuk memilih mode pemrosesan gambar
     st.sidebar.subheader("Pilih Mode Pengolahan Citra")
     opsi = st.sidebar.selectbox("Mode Pengolahan", (
-        "Citra Negatif", "Grayscale", "Rotasi", 
+        "Normal","Citra Negatif", "Grayscale", "Rotasi&Flip", 
         "Histogram Equalization", "Black & White", "Smoothing (Gaussian Blur)", "Channel RGB"
     ))
 
@@ -64,8 +70,20 @@ if uploaded_file is not None:
         threshold = st.sidebar.number_input("Threshold Level", min_value=0, max_value=255, value=127)
 
     # Button untuk memilih derajat rotasi jika opsi "Rotasi" dipilih
-    if opsi == "Rotasi":
-        rotasi = st.sidebar.radio("Pilih Derajat Rotasi", (90, 180, 270))
+    if opsi == "Rotasi&Flip":
+        rotasi = st.sidebar.radio("Pilih Derajat Rotasi", ("Custom", "Flip Horizontal", "Flip Vertikal"), index=0)
+
+        custom_angle_input = st.sidebar.text_input("Masukkan derajat rotasi (0-360)", value="0")
+    
+        # Validasi input dari user, memastikan bahwa nilai yang dimasukkan adalah angka dan berada dalam rentang 0-360
+        try:
+            custom_angle = float(custom_angle_input)
+            if not (0 <= custom_angle <= 360):
+                st.sidebar.error("Masukkan nilai derajat antara 0 hingga 360.")
+                custom_angle = 0  # Nilai default jika input di luar batas
+        except ValueError:
+            st.sidebar.error("Masukkan nilai numerik yang valid.")
+            custom_angle = 0  # Nilai default jika input tidak valid
 
     # Field input untuk blur radius jika opsi "Smoothing (Gaussian Blur)" dipilih
     if opsi == "Smoothing (Gaussian Blur)":
@@ -82,17 +100,20 @@ if uploaded_file is not None:
 
     # Fungsi untuk mengolah gambar berdasarkan opsi
     def olah_gambar(img_np, opsi):
-        if opsi == "Citra Negatif":
+        if opsi == "Normal":
+            return np.array(img_np)
+        elif opsi == "Citra Negatif":
             return np.clip(255 - img_np.astype(np.uint8), 0, 255)
         elif opsi == "Grayscale":
             return np.array(ImageOps.grayscale(Image.fromarray(img_np.astype(np.uint8))))
-        elif opsi == "Rotasi":
-            if rotasi == 90:
-                return np.rot90(img_np, 1)
-            elif rotasi == 180:
-                return np.rot90(img_np, 2)
-            elif rotasi == 270:
-                return np.rot90(img_np, 3)
+        elif opsi == "Rotasi&Flip":
+            if rotasi == "Flip Horizontal":
+                return np.fliplr(img_np)
+            elif rotasi == "Flip Vertikal":
+                return np.flipud(img_np)
+            else:  # Untuk rotasi kustom berdasarkan slider
+                return np.array(Image.fromarray(img_np.astype(np.uint8)).rotate(custom_angle, expand=True))
+            
         elif opsi == "Histogram Equalization":
             img_rgb = Image.fromarray(img_np.astype(np.uint8))
             r, g, b = img_rgb.split()
@@ -101,6 +122,7 @@ if uploaded_file is not None:
             b_eq = ImageOps.equalize(b)
             img_eq = Image.merge("RGB", (r_eq, g_eq, b_eq))
             return np.array(img_eq)
+
         elif opsi == "Black & White":
             gray = np.array(ImageOps.grayscale(Image.fromarray(img_np.astype(np.uint8))))
             bw = np.where(gray > threshold, 255, 0).astype(np.uint8)
@@ -117,29 +139,97 @@ if uploaded_file is not None:
     # Pemrosesan gambar berdasarkan opsi
     hasil = olah_gambar(img_np, opsi)
 
-    # Menampilkan hasil pemrosesan dan histogram
-    st.subheader(f"Hasil - {opsi}")
+    # Terapkan pengaturan ke gambar HASIL (bukan img_np)
+    img_pil = Image.fromarray(hasil.astype(np.uint8))  # Ubah ini dari img_np ke hasil
+
+    default_value = 1.0
+
+    # Tambahkan state untuk track kapan reset ditekan
+    if 'reset_counter' not in st.session_state:
+        st.session_state.reset_counter = 0
+
+    # Pindahkan button Reset ke ATAS sebelum slider
+    if st.sidebar.button("Reset", key="reset_adjustment"):
+        st.session_state.reset_counter += 1
+        st.sidebar.write("Adjustment telah direset ke nilai default.")
+
+    # Buat slider dengan key yang dinamis
+    brightness = st.sidebar.slider("Brightness", 
+        min_value=0.0, 
+        max_value=2.0, 
+        value=default_value, 
+        step=0.1,
+        key=f"brightness_{st.session_state.reset_counter}")
+
+    contrast = st.sidebar.slider("Contrast", 
+        min_value=0.0, 
+        max_value=2.0, 
+        value=default_value, 
+        step=0.1,
+        key=f"contrast_{st.session_state.reset_counter}")
+
+    highlight = st.sidebar.slider("Highlight", 
+        min_value=0.0, 
+        max_value=2.0, 
+        value=default_value, 
+        step=0.1,
+        key=f"highlight_{st.session_state.reset_counter}")
+
+    shadow = st.sidebar.slider("Shadow", 
+        min_value=0.0, 
+        max_value=2.0, 
+        value=default_value, 
+        step=0.1,
+        key=f"shadow_{st.session_state.reset_counter}")
+
+    whites = st.sidebar.slider("Whites", 
+        min_value=0.0, 
+        max_value=2.0, 
+        value=default_value, 
+        step=0.1,
+        key=f"whites_{st.session_state.reset_counter}")
+
+    blacks = st.sidebar.slider("Blacks", 
+        min_value=0.0, 
+        max_value=2.0, 
+        value=default_value, 
+        step=0.1,
+        key=f"blacks_{st.session_state.reset_counter}")
+
+    # Terapkan pengaturan ke gambar HASIL
+    img_pil = Image.fromarray(hasil.astype(np.uint8))  # Menggunakan hasil pengolahan
+
+    # Adjustment untuk Brightness dan Contrast
+    enhancer = ImageEnhance.Brightness(img_pil)
+    img_pil = enhancer.enhance(brightness)
+    enhancer = ImageEnhance.Contrast(img_pil)
+    img_pil = enhancer.enhance(contrast)
+
+    # Adjustment untuk Highlights dan Shadows
+    img_pil = ImageEnhance.Brightness(img_pil).enhance(highlight)
+    img_pil = ImageEnhance.Contrast(img_pil).enhance(shadow)
+
+    # Adjustment Whites dan Blacks
+    img_pil = ImageEnhance.Brightness(img_pil).enhance(whites)
+    img_pil = ImageEnhance.Contrast(img_pil).enhance(blacks)
+
+    img_np_adjusted = np.array(img_pil)
+
+    # Menampilkan gambar yang telah disesuaikan
+    st.subheader("Hasil Pengolahan Citra")
     col1, col2 = st.columns(2)
     with col1:
-        tampilkan_judul(hasil, f"Hasil - {opsi}")
+        tampilkan_judul(img_np_adjusted, f"Hasil Pengolahan: {opsi}")
     with col2:
-        tampilkan_histogram(hasil)
+        tampilkan_histogram(img_np_adjusted)
 
-    # Membuat nama file untuk hasil yang akan diunduh
-    original_filename = uploaded_file.name
-    ext = os.path.splitext(original_filename)[1]
-    nama_file_simpan = f"{os.path.splitext(original_filename)[0]}-{opsi.lower().replace(' ', '_')}{ext}"
-
-    # Konversi hasil menjadi bytes
-    hasil_bytes = convert_image_to_bytes(hasil)
-
-    # Tombol download
-    st.download_button(
-        label=f"Download {opsi}",
-        data=hasil_bytes,
-        file_name=nama_file_simpan,
-        mime=f"image/{ext[1:]}"
-    )
-
-else:
-    st.write("Silakan upload gambar terlebih dahulu.")
+    # Tombol untuk mengunduh gambar hasil
+    if st.button("Unduh Gambar", key="download_button"):  # Tambahkan key untuk tombol unduh juga
+        byte_img = convert_image_to_bytes(img_np_adjusted)
+        st.download_button(
+            label="Unduh Gambar",
+            data=byte_img,
+            file_name="hasil_pengolahan.png",
+            mime="image/png",
+            key="download_image"
+        )
