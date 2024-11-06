@@ -224,12 +224,10 @@ if uploaded_file is not None:
         tampilkan_histogram(img_np_adjusted)
 
     # Tombol untuk mengunduh gambar hasil
-    if st.button("Unduh Gambar", key="download_button"):  # Tambahkan key untuk tombol unduh juga
-        byte_img = convert_image_to_bytes(img_np_adjusted)
-        st.download_button(
-            label="Unduh Gambar",
-            data=byte_img,
-            file_name="hasil_pengolahan.png",
-            mime="image/png",
-            key="download_image"
-        )
+    st.download_button(
+        label="Unduh Gambar",
+        data=convert_image_to_bytes(img_np_adjusted),
+        file_name="hasil_pengolahan.png",
+        mime="image/png",
+        key="download_image"
+    )
