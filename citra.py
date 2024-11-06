@@ -40,7 +40,7 @@ def convert_image_to_bytes(image_array):
     return byte_im
 
 # Judul Aplikasi
-st.title("Pengolahan Citra Kelompok Esigma")
+st.title("Adobe Lightroom Kelompok Esigma")
 
 # Input Upload Gambar
 uploaded_file = st.file_uploader("Upload gambar", type=["jpg", "png", "jpeg"])
