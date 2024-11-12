@@ -3,3 +3,4 @@ numpy
 matplotlib
 streamlit
 scipy
+cv2
