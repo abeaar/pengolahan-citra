@@ -1,6 +1,7 @@
 import os
 from io import BytesIO
 
+import cv2
 import numpy as np
 import streamlit as st
 from matplotlib import pyplot as plt
@@ -48,6 +49,7 @@ st.title("Pengolahan Citra Kelompok Esigma")
 uploaded_file = st.file_uploader("Upload gambar", type=["jpg", "png", "jpeg"])
 
 if uploaded_file is not None:
+    
     # Membaca gambar dengan Pillow
     img = Image.open(uploaded_file)
     img_np = np.array(img)
@@ -64,7 +66,7 @@ if uploaded_file is not None:
     st.sidebar.subheader("Pilih Mode Pengolahan Citra")
     opsi = st.sidebar.selectbox("Mode Pengolahan", (
         "Normal","Citra Negatif", "Grayscale", "Rotasi",
-        "Histogram Equalization", "Black & White", "Smoothing (Gaussian Blur)",
+        "Histogram Equalization", "Black & White", "Smoothing (Gaussian Blur)","Noise",
         "Channel RGB" ,"Edge Detection"
     ))
 
@@ -87,7 +89,10 @@ if uploaded_file is not None:
         except ValueError:
             st.sidebar.error("Masukkan nilai numerik yang valid.")
             custom_angle = 0  # Nilai default jika input tidak valid
-
+    
+    # Tambahkan pilihan noise di sidebar
+    if opsi == "Noise":
+        noise_type = st.sidebar.selectbox("Jenis Noise", ("Gaussian", "Speckle", "Salt and Pepper"))
 
     # Field input untuk blur radius jika opsi "Smoothing (Gaussian Blur)" dipilih
     if opsi == "Smoothing (Gaussian Blur)":
@@ -106,24 +111,58 @@ if uploaded_file is not None:
     if opsi == "Edge Detection":
         metode_edge = st.sidebar.selectbox("Metode Edge Detection", ("Sobel", "Prewitt", "Roberts"))
     # Fungsi konvolusi manual
-    def apply_convolution(image, kernel):
-        h, w = image.shape
-        kh, kw = kernel.shape
-        output = np.zeros((h - kh + 1, w - kw + 1))
+    # def apply_convolution(image, kernel):
+    #     h, w = image.shape
+    #     kh, kw = kernel.shape
+    #     output = np.zeros((h - kh + 1, w - kw + 1))
         
-        for i in range(h - kh + 1):
-            for j in range(w - kw + 1):
-                region = image[i:i + kh, j:j + kw]
-                output[i, j] = np.sum(region * kernel)
+    #     for i in range(h - kh + 1):
+    #         for j in range(w - kw + 1):
+    #             region = image[i:i + kh, j:j + kw]
+    #             output[i, j] = np.sum(region * kernel)
         
-        return output
+    #     return output
+    # Fungsi untuk menambahkan Gaussian, Speckle, atau Salt-and-Pepper noise pada gambar
+    def add_noise(image, noise_type):
+        if noise_type == "Gaussian":
+            row, col, ch = image.shape
+            mean = 0
+            var = 0.01
+            sigma = var ** 0.5
+            gauss = np.random.normal(mean, sigma, (row, col, ch))
+            noisy = image + gauss * 255
+            return np.clip(noisy, 0, 255).astype(np.uint8)
+        
+        elif noise_type == "Speckle":
+            row, col, ch = image.shape
+            gauss = np.random.randn(row, col, ch)
+            noisy = image + image * gauss
+            return np.clip(noisy, 0, 255).astype(np.uint8)
+        
+        elif noise_type == "Salt and Pepper":
+            s_vs_p = 0.5
+            amount = 0.04
+            out = np.copy(image)
+            # Salt mode
+            num_salt = np.ceil(amount * image.size * s_vs_p)
+            coords = [np.random.randint(0, i - 1, int(num_salt)) for i in image.shape]
+            out[coords[0], coords[1], :] = 1
+            # Pepper mode
+            num_pepper = np.ceil(amount * image.size * (1. - s_vs_p))
+            coords = [np.random.randint(0, i - 1, int(num_pepper)) for i in image.shape]
+            out[coords[0], coords[1], :] = 0
+            return out
 
     # Fungsi untuk mengolah gambar berdasarkan opsi
     def olah_gambar(img_np, opsi):
         if opsi == "Normal":
             return np.array(img_np)
         elif opsi == "Citra Negatif":
-            return np.clip(255 - img_np.astype(np.uint8), 0, 255)
+            img_cv2 = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
+            # Membuat citra negatif
+            negatif_img = cv2.bitwise_not(img_cv2)
+            # Kembali ke format RGB untuk ditampilkan di Streamlit
+            return cv2.cvtColor(negatif_img, cv2.COLOR_BGR2RGB)
         elif opsi == "Grayscale":
             gray = np.dot(img_np[..., :3], [0.2989, 0.5870, 0.1140])
             return gray.astype(np.uint8)
@@ -135,16 +174,14 @@ if uploaded_file is not None:
             else:  # Untuk rotasi kustom berdasarkan slider
                 return np.array(Image.fromarray(img_np.astype(np.uint8)).rotate(custom_angle, expand=True))
         elif opsi == "Histogram Equalization":
-            img_eq = np.zeros_like(img_np)
-            for i in range(3):  # Apply equalization on each color channel
-                hist, bins = np.histogram(img_np[:, :, i].flatten(), 256, [0, 256])
-                cdf = hist.cumsum()
-                cdf_normalized = cdf * (hist.max() / cdf.max())
-                cdf_m = np.ma.masked_equal(cdf, 0)
-                cdf_m = (cdf_m - cdf_m.min()) * 255 / (cdf_m.max() - cdf_m.min())
-                cdf = np.ma.filled(cdf_m, 0).astype('uint8')
-                img_eq[:, :, i] = cdf[img_np[:, :, i]]
-            return img_eq
+            img_yuv = cv2.cvtColor(img_np, cv2.COLOR_RGB2YUV)
+                
+            # Equalize the Y channel
+            img_yuv[:,:,0] = cv2.equalizeHist(img_yuv[:,:,0])
+                
+            # Convert back to RGB
+            img_output = cv2.cvtColor(img_yuv, cv2.COLOR_YUV2RGB)
+            return img_output
         elif opsi == "Black & White":
             # Konversi gambar ke grayscale dan terapkan threshold
             gray = np.dot(img_np[..., :3], [0.2989, 0.5870, 0.1140])
@@ -152,12 +189,26 @@ if uploaded_file is not None:
             return bw.astype(np.uint8)
         elif opsi == "Smoothing (Gaussian Blur)":
             return np.array(Image.fromarray(img_np.astype(np.uint8)).filter(ImageFilter.GaussianBlur(radius=blur_radius)))
+        elif opsi == "Noise":
+            return add_noise(img_np, noise_type)
         elif opsi == "Channel RGB":
-            # Preserve color of the selected channel, set other channels to zero
-            img_channel = np.zeros_like(img_np)
-            channel_map = {"Red": 0, "Green": 1, "Blue": 2}
-            img_channel[:, :, channel_map[channel]] = img_np[:, :, channel_map[channel]]
-            return img_channel
+            # Konversi dari RGB ke BGR (format yang digunakan OpenCV)
+            img_bgr = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
+            # Pisahkan channel BGR
+            b, g, r = cv2.split(img_bgr)
+            # Buat array kosong untuk setiap channel
+            zeros = np.zeros(img_bgr.shape[:2], dtype="uint8")
+            # Mapping channel yang akan ditampilkan
+            channel_output = {
+                "Red": cv2.merge([zeros, zeros, r]),    # Hanya channel merah
+                "Green": cv2.merge([zeros, g, zeros]),  # Hanya channel hijau
+                "Blue": cv2.merge([b, zeros, zeros])    # Hanya channel biru
+            }
+            # Ambil channel yang dipilih
+            result = channel_output[channel]
+            # Konversi kembali ke RGB untuk ditampilkan di streamlit
+            return cv2.cvtColor(result, cv2.COLOR_BGR2RGB)
+            
         # elif opsi == "Edge Detection":
         #     gray = np.dot(img_np[..., :3], [0.2989, 0.5870, 0.1140])  # Convert to grayscale first
         #     if metode_edge == "Sobel":
