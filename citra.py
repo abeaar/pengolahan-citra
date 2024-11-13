@@ -5,7 +5,7 @@ import cv2
 import numpy as np
 import streamlit as st
 from matplotlib import pyplot as plt
-from PIL import Image, ImageFilter, ImageOps
+from PIL import Image, ImageEnhance, ImageFilter, ImageOps
 from scipy import ndimage
 
 
@@ -17,7 +17,7 @@ def tampilkan_judul(citra, judul):
 def tampilkan_histogram(citra):
     fig, ax = plt.subplots()
     if len(citra.shape) == 3:  # Histogram untuk gambar berwarna
-        color = ('b', 'g', 'r')
+        color = ('r', 'g', 'b')
         for i, col in enumerate(color):
             # Mengabaikan piksel hitam (nilai 0)
             non_zero_pixels = citra[:, :, i][citra[:, :, i] > 0]
@@ -208,7 +208,7 @@ if uploaded_file is not None:
             result = channel_output[channel]
             # Konversi kembali ke RGB untuk ditampilkan di streamlit
             return cv2.cvtColor(result, cv2.COLOR_BGR2RGB)
-            
+
         # elif opsi == "Edge Detection":
         #     gray = np.dot(img_np[..., :3], [0.2989, 0.5870, 0.1140])  # Convert to grayscale first
         #     if metode_edge == "Sobel":
@@ -263,13 +263,65 @@ if uploaded_file is not None:
     # Pemrosesan gambar berdasarkan opsi
     hasil = olah_gambar(img_np, opsi)
 
+    # Terapkan pengaturan ke gambar HASIL (bukan img_np)
+    img_pil = Image.fromarray(hasil.astype(np.uint8))  # Ubah ini dari img_np ke hasil
+
+    default_value = 1.0
+
+    # Tambahkan state untuk track kapan reset ditekan
+    if 'reset_counter' not in st.session_state:
+        st.session_state.reset_counter = 0
+
+    # Pindahkan button Reset ke ATAS sebelum slider
+    if st.sidebar.button("Reset", key="reset_adjustment"):
+        st.session_state.reset_counter += 1
+        st.sidebar.write("Adjustment telah direset ke nilai default.")
+
+    # Buat slider dengan key yang dinamis
+    brightness = st.sidebar.slider("Brightness", 
+        min_value=0.0, 
+        max_value=2.0, 
+        value=default_value, 
+        step=0.1,
+        key=f"brightness_{st.session_state.reset_counter}")
+
+    contrast = st.sidebar.slider("Contrast", 
+        min_value=0.0, 
+        max_value=2.0, 
+        value=default_value, 
+        step=0.1,
+        key=f"contrast_{st.session_state.reset_counter}")
+
+    shadow = st.sidebar.slider("Shadow", 
+        min_value=0.0, 
+        max_value=2.0, 
+        value=default_value, 
+        step=0.1,
+        key=f"shadow_{st.session_state.reset_counter}")
+
+
+
+    # Terapkan pengaturan ke gambar HASIL
+    img_pil = Image.fromarray(hasil.astype(np.uint8))  # Menggunakan hasil pengolahan
+
+    # Adjustment untuk Brightness dan Contrast
+    enhancer = ImageEnhance.Brightness(img_pil)
+    img_pil = enhancer.enhance(brightness)
+    enhancer = ImageEnhance.Contrast(img_pil)
+    img_pil = enhancer.enhance(contrast)
+    img_pil = ImageEnhance.Contrast(img_pil).enhance(shadow)
+
+
+    img_np_adjusted = np.array(img_pil)
+
+
     # Menampilkan hasil pemrosesan dan histogram
-    st.subheader(f"Hasil - {opsi}")
+    st.subheader("Hasil Pengolahan Citra")
     col1, col2 = st.columns(2)
     with col1:
-        tampilkan_judul(hasil, f"Hasil - {opsi}")
+        tampilkan_judul(img_np_adjusted, f"Hasil Pengolahan: {opsi}")
     with col2:
-        tampilkan_histogram(hasil)
+        tampilkan_histogram(img_np_adjusted)
 
     # Membuat nama file untuk hasil yang akan diunduh
     original_filename = uploaded_file.name
