@@ -329,7 +329,7 @@ if uploaded_file is not None:
     nama_file_simpan = f"{os.path.splitext(original_filename)[0]}-{opsi.lower().replace(' ', '_')}{ext}"
 
     # Konversi hasil menjadi bytes
-    hasil_bytes = convert_image_to_bytes(hasil)
+    hasil_bytes = convert_image_to_bytes(img_np_adjusted)
 
     # Tombol download
     st.download_button(
