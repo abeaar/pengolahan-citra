@@ -11,7 +11,7 @@ from scipy import ndimage
 
 # Fungsi untuk menampilkan gambar dengan judul
 def tampilkan_judul(citra, judul):
-    st.image(citra, caption=judul, use_column_width=True)
+    st.image(citra, caption=judul, use_container_width=True)
 
 # Fungsi untuk membuat dan menampilkan histogram sebagai bar plot
 def tampilkan_histogram(citra):
