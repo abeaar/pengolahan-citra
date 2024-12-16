@@ -18,5 +18,5 @@ Aplikasi ini adalah proyek pengolahan citra berbasis web yang dikembangkan mengg
 
 ### 1. Clone Repository
 ```bash
-git clone https://github.com/username/nama-repository.git
-cd nama-repository
+git clone https://github.com/abeaar/pengolahan-citra.git
+cd pengolahan-citra
