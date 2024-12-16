@@ -24,6 +24,10 @@ cd pengolahan-citra
 
 ### 2. Install Dependencies
 ```bash
-git clone https://github.com/abeaar/pengolahan-citra.git
-cd pengolahan-citra
+pip install -r requirements.txt
+```
+
+### 3. Run Application
+```bash
+streamlit run citra.py
 ```
