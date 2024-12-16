@@ -1,6 +1,5 @@
-streamlit
-numpy
 opencv-python
-Pillow
+opencv-python-headless
+numpy
 matplotlib
-scipy
+streamlit
