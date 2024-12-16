@@ -20,3 +20,10 @@ Aplikasi ini adalah proyek pengolahan citra berbasis web yang dikembangkan mengg
 ```bash
 git clone https://github.com/abeaar/pengolahan-citra.git
 cd pengolahan-citra
+```
+
+### 2. Install Dependencies
+```bash
+git clone https://github.com/abeaar/pengolahan-citra.git
+cd pengolahan-citra
+```
